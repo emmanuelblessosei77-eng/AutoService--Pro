@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Car Service Management App</title>
+  </head>
+
+  <body>
+    <!-- Guard: remove/ignore malicious or extension-injected resources that can break page parsing -->
+    <script>
+      (function(){
+        try {
+          const removeExtNode = (node) => {
+            if (!node || !node.tagName) return;
+            const tag = node.tagName.toUpperCase();
+            const src = node.src || node.href || '';
+            if (src && src.startsWith('chrome-extension://')) {
+              try { node.remove(); console.warn('Removed extension resource:', src); } catch(e){}
+            }
+          };
+
+          // Initial sweep
+          try {
+            document.querySelectorAll('script[src^="chrome-extension://"], link[href^="chrome-extension://"]').forEach(n => n.remove());
+          } catch(e){}
+
+          // Observe DOM additions and remove extension-injected scripts/links
+          const observer = new MutationObserver(muts => {
+            for (const m of muts) {
+              for (const n of m.addedNodes) {
+                if (n && n.nodeType === 1) removeExtNode(n);
+                // also check descendants
+                try { n.querySelectorAll && n.querySelectorAll('script[src^="chrome-extension://"], link[href^="chrome-extension://"]').forEach(removeExtNode); } catch(e){}
+              }
+            }
+          });
+          observer.observe(document.documentElement || document, { childList: true, subtree: true });
+
+          // Ignore console error bubbles from chrome-extension origins (best-effort only)
+          window.addEventListener('error', (evt) => {
+            try {
+              if (evt && evt.filename && evt.filename.startsWith && evt.filename.startsWith('chrome-extension://')) {
+                // Swallow extension-originating parse errors to avoid breaking UX
+                console.warn('Ignored extension error from', evt.filename, evt.message);
+                evt.preventDefault && evt.preventDefault();
+              }
+            } catch (e) {}
+          }, true);
+        } catch (e) {
+          console.warn('Extension guard init failed', e);
+        }
+      })();
+    </script>
+    <div id="root"></div>
+    <!-- Dev helper: auto-set a dev auth token in localStorage when running locally -->
+    <script>
+      (function(){
+        try {
+          const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+          if (!isLocal) return;
+          const existing = localStorage.getItem('authToken');
+          if (!existing) {
+            // Set a short-lived dev token so frontend calls that check for authToken pass
+            localStorage.setItem('authToken', 'dev-token-123');
+            console.log('✅ Dev authToken injected into localStorage');
+          }
+        } catch (e) {
+          console.warn('Dev auth token injection failed', e);
+        }
+      })();
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

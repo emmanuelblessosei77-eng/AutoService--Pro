@@ -1,0 +1,113 @@
+/* Glassmorphism card style */
+.glass-card {
+  background: rgba(255,255,255,0.7);
+  border-radius: 1.25rem;
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.10);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,0.18);
+  transition: box-shadow 0.2s, background 0.2s;
+}
+.glass-card:hover {
+  box-shadow: 0 12px 40px 0 rgba(31, 38, 135, 0.18);
+  background: rgba(255,255,255,0.85);
+}
+@import './fonts.css';
+@import './tailwind.css';
+@import './theme.css';
+
+/* Print Styles */
+@media print {
+  /* Hide elements that shouldn't be printed */
+  .print\:hidden {
+    display: none !important;
+  }
+
+  /* Optimize page layout */
+  body {
+    background: white;
+    color: black;
+  }
+
+  /* Better card appearance */
+  [class*="Card"] {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Section spacing */
+  h2 {
+    margin-top: 1.5rem;
+    margin-bottom: 0.75rem;
+    page-break-after: avoid;
+  }
+
+  /* Grid optimization */
+  [class*="grid"] {
+    break-inside: avoid;
+  }
+
+  /* Remove box shadows in print */
+  [class*="shadow"] {
+    box-shadow: none !important;
+  }
+
+  /* Border colors for print visibility */
+  [class*="border"] {
+    border-color: #ccc !important;
+  }
+
+  /* Tab styling for print */
+  [role="tabpanel"] {
+    display: block !important;
+  }
+
+  /* Page breaks */
+  .space-y-6 > * + * {
+    page-break-inside: avoid;
+  }
+
+  /* Header for print */
+  @page {
+    margin: 0.5in;
+  }
+}
+
+/* Animation delay utilities */
+.animation-delay-0 {
+  animation-delay: 0s;
+}
+
+.animation-delay-1 {
+  animation-delay: 0.1s;
+}
+
+.animation-delay-2 {
+  animation-delay: 0.2s;
+}
+
+.animation-delay-3 {
+  animation-delay: 0.3s;
+}
+
+.animation-delay-4 {
+  animation-delay: 0.4s;
+}
+
+.animation-delay-2000 {
+  animation-delay: 2s;
+}
+
+.animation-delay-4000 {
+  animation-delay: 4s;
+}
+
+/* Shimmer background utilities */
+.shimmer-bg {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.2) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  background-size: 1000px 100%;
+}

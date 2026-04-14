@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Refund System Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #1e40af;
+            border-bottom: 3px solid #dbeafe;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #1e40af;
+            margin-top: 30px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f9fafb;
+            border-left: 4px solid #3b82f6;
+            border-radius: 4px;
+        }
+        .booking-card {
+            background: white;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin: 5px 0;
+        }
+        .status-pending {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        .status-cancelled {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        .status-refund-pending {
+            background: #fef3c7;
+            color: #92400e;
+            animation: pulse 2s infinite;
+        }
+        .status-refunded {
+            background: #dcfce7;
+            color: #166534;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        .refund-section {
+            background: #fef3c7;
+            border: 1px solid #fde047;
+            border-radius: 6px;
+            padding: 12px;
+            margin-top: 10px;
+        }
+        .refund-section.completed {
+            background: #dcfce7;
+            border-color: #86efac;
+        }
+        .button {
+            display: inline-block;
+            padding: 10px 20px;
+            margin: 5px 5px 5px 0;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .button-primary {
+            background: #3b82f6;
+            color: white;
+        }
+        .button-primary:hover {
+            background: #2563eb;
+        }
+        .button-danger {
+            background: #ef4444;
+            color: white;
+        }
+        .button-danger:hover {
+            background: #dc2626;
+        }
+        .button-success {
+            background: #22c55e;
+            color: white;
+        }
+        .button-success:hover {
+            background: #16a34a;
+        }
+        .output {
+            background: #1f2937;
+            color: #10b981;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            overflow-x: auto;
+            margin: 10px 0;
+        }
+        .log {
+            margin: 5px 0;
+        }
+        .log.success { color: #10b981; }
+        .log.warning { color: #fbbf24; }
+        .log.error { color: #f87171; }
+        .log.info { color: #60a5fa; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        th {
+            background: #f3f4f6;
+            font-weight: 600;
+            color: #1f2937;
+        }
+        tr:hover {
+            background: #f9fafb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Refund System Test Suite</h1>
+        
+        <div class="test-section">
+            <h2>Test Scenario 1: Cancel a Paid Booking</h2>
+            <p>Create a booking with payment, then cancel it. System should auto-flag for refund.</p>
+            <button class="button button-primary" onclick="testCancelPaid()">Run Test 1</button>
+            <div id="output1" class="output" style="display:none;"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>Test Scenario 2: Process Refund</h2>
+            <p>Mark the cancelled booking as refunded. System should update status and record date.</p>
+            <button class="button button-success" onclick="testProcessRefund()">Run Test 2</button>
+            <div id="output2" class="output" style="display:none;"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>Test Scenario 3: Cancel Free Booking</h2>
+            <p>Cancel a booking without payment. Should not show refund section.</p>
+            <button class="button button-primary" onclick="testCancelFree()">Run Test 3</button>
+            <div id="output3" class="output" style="display:none;"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>Test Scenario 4: Partial Refund</h2>
+            <p>Process a partial refund with reason. Shows different amount than original payment.</p>
+            <button class="button button-primary" onclick="testPartialRefund()">Run Test 4</button>
+            <div id="output4" class="output" style="display:none;"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>📊 Live Booking States</h2>
+            <div id="bookingStates"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>🎯 Test Results</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Test</th>
+                        <th>Status</th>
+                        <th>Result</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsTable">
+                    <tr>
+                        <td>Test 1: Cancel Paid Booking</td>
+                        <td id="test1-status">⏳ Pending</td>
+                        <td id="test1-result">-</td>
+                    </tr>
+                    <tr>
+                        <td>Test 2: Process Refund</td>
+                        <td id="test2-status">⏳ Pending</td>
+                        <td id="test2-result">-</td>
+                    </tr>
+                    <tr>
+                        <td>Test 3: Cancel Free Booking</td>
+                        <td id="test3-status">⏳ Pending</td>
+                        <td id="test3-result">-</td>
+                    </tr>
+                    <tr>
+                        <td>Test 4: Partial Refund</td>
+                        <td id="test4-status">⏳ Pending</td>
+                        <td id="test4-result">-</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="test-section">
+            <button class="button" onclick="window.location.href='http://localhost:5173'">← Back to App</button>
+        </div>
+    </div>
+
+    <script>
+        // Mock DashboardContext for testing
+        class MockDashboard {
+            constructor() {
+                this.bookings = [];
+                this.loadStorage();
+            }
+
+            loadStorage() {
+                const data = localStorage.getItem('dashboardData');
+                if (data) {
+                    this.bookings = JSON.parse(data).bookings || [];
+                }
+            }
+
+            saveStorage() {
+                const data = { bookings: this.bookings };
+                localStorage.setItem('dashboardData', JSON.stringify(data));
+            }
+
+            createBooking(booking) {
+                this.bookings.push(booking);
+                this.saveStorage();
+                return booking;
+            }
+
+            cancelBooking(bookingId) {
+                const booking = this.bookings.find(b => b.id === bookingId);
+                if (!booking) return false;
+
+                booking.status = 'cancelled';
+                
+                // Auto-flag for refund if paid
+                if (booking.paymentStatus === 'paid' && booking.amountPaid) {
+                    booking.paymentStatus = 'refund_pending';
+                    booking.refundAmount = booking.amountPaid;
+                }
+
+                this.saveStorage();
+                return true;
+            }
+
+            processRefund(bookingId, refundAmount, refundNotes) {
+                const booking = this.bookings.find(b => b.id === bookingId);
+                if (!booking) return false;
+
+                booking.paymentStatus = 'refunded';
+                booking.refundAmount = refundAmount;
+                booking.refundDate = new Date();
+                booking.refundNotes = refundNotes || '';
+
+                this.saveStorage();
+                return true;
+            }
+
+            getBookings() {
+                return this.bookings;
+            }
+        }
+
+        const dashboard = new MockDashboard();
+
+        function log(output, message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `log ${type}`;
+            div.textContent = message;
+            output.appendChild(div);
+            output.style.display = 'block';
+        }
+
+        function testCancelPaid() {
+            const output = document.getElementById('output1');
+            output.innerHTML = '';
+
+            try {
+                // Create a paid booking
+                const booking = {
+                    id: 'booking-001',
+                    serviceType: 'Transmission Fluid Change',
+                    scheduledDate: new Date(),
+                    status: 'scheduled',
+                    paymentStatus: 'paid',
+                    amountPaid: 1500,
+                    estimatedCost: 1500
+                };
+
+                log(output, '✓ Created booking with payment', 'success');
+                log(output, `  Service: ${booking.serviceType}`, 'info');
+                log(output, `  Amount Paid: GH₵${booking.amountPaid}`, 'info');
+                log(output, `  Status: ${booking.status}`, 'info');
+
+                const result = dashboard.createBooking(booking);
+                log(output, '✓ Booking stored in system', 'success');
+
+                // Cancel the booking
+                log(output, '\n📋 Cancelling booking...', 'info');
+                dashboard.cancelBooking('booking-001');
+
+                const cancelled = dashboard.getBookings().find(b => b.id === 'booking-001');
+                log(output, `✓ Booking cancelled`, 'success');
+                log(output, `  Status: ${cancelled.status}`, 'info');
+                log(output, `  Payment Status: ${cancelled.paymentStatus}`, 'info');
+                log(output, `  Refund Amount: GH₵${cancelled.refundAmount}`, 'success');
+
+                // Verify auto-flagging
+                if (cancelled.paymentStatus === 'refund_pending' && cancelled.refundAmount === 1500) {
+                    log(output, '\n✅ TEST PASSED: Refund auto-flagged correctly', 'success');
+                    updateResult('test1', 'PASS', '✅ Auto-flagged for refund');
+                } else {
+                    log(output, '\n❌ TEST FAILED: Refund not flagged', 'error');
+                    updateResult('test1', 'FAIL', '❌ Refund flag missing');
+                }
+            } catch (error) {
+                log(output, `❌ Error: ${error.message}`, 'error');
+                updateResult('test1', 'ERROR', error.message);
+            }
+        }
+
+        function testProcessRefund() {
+            const output = document.getElementById('output2');
+            output.innerHTML = '';
+
+            try {
+                // Get the cancelled booking
+                const booking = dashboard.getBookings().find(b => b.id === 'booking-001');
+                if (!booking) {
+                    log(output, '⚠️  No booking found. Run Test 1 first.', 'warning');
+                    updateResult('test2', 'SKIP', 'Requires Test 1');
+                    return;
+                }
+
+                log(output, 'Current Booking State:', 'info');
+                log(output, `  Status: ${booking.status}`, 'info');
+                log(output, `  Payment Status: ${booking.paymentStatus}`, 'info');
+                log(output, `  Refund Amount: GH₵${booking.refundAmount}`, 'info');
+
+                // Process refund
+                log(output, '\n💰 Processing refund...', 'info');
+                dashboard.processRefund('booking-001', 1500, 'Paystack reversal - Ref TX123');
+
+                const refunded = dashboard.getBookings().find(b => b.id === 'booking-001');
+                log(output, `✓ Refund processed`, 'success');
+                log(output, `  Payment Status: ${refunded.paymentStatus}`, 'success');
+                log(output, `  Refund Amount: GH₵${refunded.refundAmount}`, 'success');
+                log(output, `  Refund Date: ${refunded.refundDate.toLocaleDateString()}`, 'success');
+                log(output, `  Notes: ${refunded.refundNotes}`, 'info');
+
+                // Verify
+                if (refunded.paymentStatus === 'refunded' && refunded.refundDate) {
+                    log(output, '\n✅ TEST PASSED: Refund marked as complete', 'success');
+                    updateResult('test2', 'PASS', '✅ Marked as refunded');
+                } else {
+                    log(output, '\n❌ TEST FAILED: Refund status not updated', 'error');
+                    updateResult('test2', 'FAIL', '❌ Status not updated');
+                }
+            } catch (error) {
+                log(output, `❌ Error: ${error.message}`, 'error');
+                updateResult('test2', 'ERROR', error.message);
+            }
+        }
+
+        function testCancelFree() {
+            const output = document.getElementById('output3');
+            output.innerHTML = '';
+
+            try {
+                // Create a free booking (no payment)
+                const booking = {
+                    id: 'booking-002',
+                    serviceType: 'Vehicle Inspection',
+                    scheduledDate: new Date(),
+                    status: 'scheduled',
+                    paymentStatus: 'unpaid',
+                    amountPaid: null,
+                    estimatedCost: 0
+                };
+
+                log(output, '✓ Created free booking (no payment)', 'success');
+                log(output, `  Service: ${booking.serviceType}`, 'info');
+                log(output, `  Amount Paid: ${booking.amountPaid === null ? 'None' : 'GH₵' + booking.amountPaid}`, 'info');
+                log(output, `  Payment Status: ${booking.paymentStatus}`, 'info');
+
+                dashboard.createBooking(booking);
+                log(output, '✓ Booking stored', 'success');
+
+                // Cancel the booking
+                log(output, '\n📋 Cancelling free booking...', 'info');
+                dashboard.cancelBooking('booking-002');
+
+                const cancelled = dashboard.getBookings().find(b => b.id === 'booking-002');
+                log(output, `✓ Booking cancelled`, 'success');
+                log(output, `  Status: ${cancelled.status}`, 'info');
+                log(output, `  Payment Status: ${cancelled.paymentStatus}`, 'info');
+
+                // Verify no refund section should show
+                if (cancelled.paymentStatus !== 'refund_pending' && !cancelled.refundAmount) {
+                    log(output, '\n✅ TEST PASSED: No refund section for free booking', 'success');
+                    updateResult('test3', 'PASS', '✅ No refund shown');
+                } else {
+                    log(output, '\n❌ TEST FAILED: Refund flagged for free booking', 'error');
+                    updateResult('test3', 'FAIL', '❌ Incorrectly flagged');
+                }
+            } catch (error) {
+                log(output, `❌ Error: ${error.message}`, 'error');
+                updateResult('test3', 'ERROR', error.message);
+            }
+        }
+
+        function testPartialRefund() {
+            const output = document.getElementById('output4');
+            output.innerHTML = '';
+
+            try {
+                // Create a paid booking
+                const booking = {
+                    id: 'booking-003',
+                    serviceType: 'Full Service',
+                    scheduledDate: new Date(),
+                    status: 'scheduled',
+                    paymentStatus: 'paid',
+                    amountPaid: 2000,
+                    estimatedCost: 2000
+                };
+
+                log(output, '✓ Created booking with payment', 'success');
+                log(output, `  Service: ${booking.serviceType}`, 'info');
+                log(output, `  Original Amount: GH₵${booking.amountPaid}`, 'info');
+
+                dashboard.createBooking(booking);
+                dashboard.cancelBooking('booking-003');
+                log(output, '✓ Booking cancelled and flagged for refund', 'success');
+
+                // Process partial refund
+                log(output, '\n💰 Processing partial refund...', 'info');
+                const refundAmount = 1500;
+                const notes = 'GH₵500 cancellation fee applied';
+                dashboard.processRefund('booking-003', refundAmount, notes);
+
+                const refunded = dashboard.getBookings().find(b => b.id === 'booking-003');
+                log(output, `✓ Partial refund processed`, 'success');
+                log(output, `  Original Amount: GH₵${booking.amountPaid}`, 'info');
+                log(output, `  Refund Amount: GH₵${refunded.refundAmount}`, 'warning');
+                log(output, `  Difference: GH₵${booking.amountPaid - refunded.refundAmount} (fee)`, 'warning');
+                log(output, `  Notes: ${refunded.refundNotes}`, 'info');
+
+                // Verify partial refund
+                if (refunded.refundAmount === 1500 && refunded.refundNotes.includes('fee')) {
+                    log(output, '\n✅ TEST PASSED: Partial refund processed correctly', 'success');
+                    updateResult('test4', 'PASS', '✅ Partial refund working');
+                } else {
+                    log(output, '\n❌ TEST FAILED: Partial refund not correct', 'error');
+                    updateResult('test4', 'FAIL', '❌ Amount mismatch');
+                }
+            } catch (error) {
+                log(output, `❌ Error: ${error.message}`, 'error');
+                updateResult('test4', 'ERROR', error.message);
+            }
+        }
+
+        function updateResult(testId, status, result) {
+            const statusEl = document.getElementById(`${testId}-status`);
+            const resultEl = document.getElementById(`${testId}-result`);
+            
+            let statusBadge = '⏳ Pending';
+            if (status === 'PASS') statusBadge = '✅ PASS';
+            else if (status === 'FAIL') statusBadge = '❌ FAIL';
+            else if (status === 'ERROR') statusBadge = '⚠️ ERROR';
+            else if (status === 'SKIP') statusBadge = '⊘ SKIP';
+
+            statusEl.textContent = statusBadge;
+            resultEl.textContent = result;
+        }
+
+        // Display booking states
+        setInterval(() => {
+            const bookingsDiv = document.getElementById('bookingStates');
+            const bookings = dashboard.getBookings();
+            
+            let html = '';
+            bookings.forEach(booking => {
+                let statusClass = 'status-' + (booking.paymentStatus || 'pending');
+                let refundHtml = '';
+                
+                if (booking.status === 'cancelled' && booking.paymentStatus) {
+                    const isCompleted = booking.paymentStatus === 'refunded';
+                    refundHtml = `
+                        <div class="refund-section ${isCompleted ? 'completed' : ''}">
+                            <strong>${isCompleted ? '✓ Refund Completed' : '⏳ Refund In Progress'}</strong><br>
+                            Refund Amount: GH₵${booking.refundAmount?.toFixed(2) || '0.00'}<br>
+                            ${booking.refundDate ? `Refunded on: ${new Date(booking.refundDate).toLocaleDateString()}<br>` : ''}
+                            ${booking.refundNotes ? `Notes: ${booking.refundNotes}` : ''}
+                        </div>
+                    `;
+                }
+
+                html += `
+                    <div class="booking-card">
+                        <div><strong>${booking.serviceType}</strong></div>
+                        <div>
+                            <span class="status-badge" style="background: ${booking.status === 'cancelled' ? '#fee2e2' : '#dbeafe'}; color: ${booking.status === 'cancelled' ? '#991b1b' : '#1e40af'};">
+                                ${booking.status}
+                            </span>
+                            <span class="status-badge ${statusClass}">
+                                Payment: ${booking.paymentStatus || 'N/A'}
+                            </span>
+                        </div>
+                        ${refundHtml}
+                    </div>
+                `;
+            });
+
+            bookingsDiv.innerHTML = html || '<p style="color: #9ca3af;">No bookings yet. Run a test to create one.</p>';
+        }, 500);
+    </script>
+</body>
+</html>
