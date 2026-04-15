@@ -2,6 +2,10 @@ import { Link } from 'react-router-dom';
 import { AlertCircle, Package, ShoppingCart } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 
+function isLoggedIn(): boolean {
+  return !!(localStorage.getItem('authToken') || localStorage.getItem('token'));
+}
+
 function formatPrice(price: number | string): string {
   const num = parseFloat(String(price));
   if (isNaN(num)) return 'GH₵0.00';
@@ -18,6 +22,7 @@ interface PartCardProps {
   actionLabel?: string;
   actionHref?: string;
   onAction?: () => void;
+  onAuthRequired?: () => void;
   showStockStatus?: boolean;
 }
 
@@ -31,6 +36,7 @@ export function PartCard({
   actionLabel = 'Shop Now',
   actionHref = '/shop',
   onAction,
+  onAuthRequired,
   showStockStatus = false,
 }: PartCardProps) {
   const { isDark } = useTheme();
@@ -94,7 +100,13 @@ export function PartCard({
 
           {onAction ? (
             <button
-              onClick={onAction}
+              onClick={() => {
+                if (actionLabel === 'Add to Cart' && !isLoggedIn()) {
+                  onAuthRequired?.();
+                  return;
+                }
+                onAction();
+              }}
               className="inline-flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-xl transition-colors duration-150 shadow-sm bg-cyan-500 hover:bg-cyan-400 active:bg-cyan-300 text-slate-950"
             >
               {actionLabel === 'Add to Cart' ? <ShoppingCart className="w-4 h-4" /> : null}
@@ -103,8 +115,9 @@ export function PartCard({
           ) : (
             <Link
               to={actionHref}
-              className="inline-flex items-center justify-center text-sm font-semibold px-3 py-2 rounded-xl transition-colors duration-150 shadow-sm bg-cyan-500 hover:bg-cyan-400 text-slate-950"
+              className="inline-flex items-center gap-1.5 justify-center text-sm font-semibold px-3 py-2 rounded-xl transition-colors duration-150 shadow-sm bg-cyan-500 hover:bg-cyan-400 text-slate-950"
             >
+              {actionLabel === 'Add to Cart' ? <ShoppingCart className="w-4 h-4" /> : null}
               {actionLabel}
             </Link>
           )}

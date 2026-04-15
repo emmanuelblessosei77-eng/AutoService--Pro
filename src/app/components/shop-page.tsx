@@ -22,8 +22,13 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { Header } from './header';
 import { Footer } from './footer';
-import { carParts as carPartsAPI } from '../../services/api';
+import { carParts as carPartsAPI, users as usersAPI } from '../../services/api';
 import { resolvePartImage } from '../utils/partImageResolver';
+
+// ─── Auth helper ─────────────────────────────────────────────────────────────
+function isLoggedIn(): boolean {
+  return !!(localStorage.getItem('authToken') || localStorage.getItem('token'));
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -429,7 +434,28 @@ export function ShopPage() {
   const [activeCategory, setActiveCategory] = useState<Category>('All');
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
+  const [authGateOpen, setAuthGateOpen] = useState(false);
+  const [loggedIn, setLoggedIn] = useState(false);
   const categoryScrollRef = useRef<HTMLDivElement>(null);
+
+  // Validate auth token against backend on mount
+  useEffect(() => {
+    const validateAuth = async () => {
+      const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+      if (!token) { setLoggedIn(false); return; }
+      try {
+        await usersAPI.getProfile();
+        setLoggedIn(true);
+      } catch {
+        // Token is invalid or expired — clear it
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('token');
+        localStorage.removeItem('currentUser');
+        setLoggedIn(false);
+      }
+    };
+    validateAuth();
+  }, []);
 
   // Fetch parts on mount
   useEffect(() => {
@@ -482,10 +508,8 @@ export function ShopPage() {
   const totalCartQty = cartItems.reduce((s, i) => s + i.qty, 0);
 
   const handleAddToCart = (part: RawPart) => {
-    // Check authentication before modifying cart
-    const token = localStorage.getItem('authToken') || localStorage.getItem('token');
-    if (!token) {
-      window.location.href = '/login';
+    if (!isLoggedIn()) {
+      setAuthGateOpen(true);
       return;
     }
     setCartItems((prev) => {
@@ -535,6 +559,45 @@ export function ShopPage() {
 
   return (
     <div className={`min-h-screen flex flex-col transition-colors duration-300 ${isDark ? 'bg-[#10141c]' : 'bg-white'}`}>
+      {/* Auth Gate Modal */}
+      <Dialog open={authGateOpen} onOpenChange={setAuthGateOpen}>
+        <DialogContent className={`w-full max-w-sm rounded-2xl shadow-2xl p-0 border ${isDark ? 'bg-[#0d1526] border-slate-800' : 'bg-white border-gray-200'}`}>
+          <div className={`p-6 flex flex-col items-center text-center gap-4`}>
+            <div className={`w-16 h-16 rounded-full flex items-center justify-center ${isDark ? 'bg-cyan-500/15 border border-cyan-400/30' : 'bg-blue-50 border border-blue-200'}`}>
+              <ShoppingCart className={`w-8 h-8 ${isDark ? 'text-cyan-300' : 'text-blue-500'}`} />
+            </div>
+            <div>
+              <h2 className={`text-xl font-bold mb-1 ${isDark ? 'text-slate-100' : 'text-gray-900'}`}>Sign in to add items</h2>
+              <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-gray-500'}`}>
+                You need an account to add items to your cart and checkout.
+              </p>
+            </div>
+            <div className="w-full flex flex-col gap-2 pt-1">
+              <Link
+                to="/login"
+                onClick={() => setAuthGateOpen(false)}
+                className={`w-full py-2.5 rounded-xl font-semibold text-sm transition-colors text-center ${isDark ? 'bg-cyan-500 hover:bg-cyan-400 text-slate-950' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+              >
+                Log In
+              </Link>
+              <Link
+                to="/register"
+                onClick={() => setAuthGateOpen(false)}
+                className={`w-full py-2.5 rounded-xl font-semibold text-sm transition-colors text-center border ${isDark ? 'border-slate-700 text-slate-200 hover:bg-slate-800' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+              >
+                Create an Account
+              </Link>
+            </div>
+            <button
+              onClick={() => setAuthGateOpen(false)}
+              className={`text-xs ${isDark ? 'text-slate-500 hover:text-slate-400' : 'text-gray-400 hover:text-gray-600'}`}
+            >
+              Continue browsing
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Checkout Modal (final step) */}
       <Dialog open={showCheckoutModal} onOpenChange={setShowCheckoutModal}>
         <DialogContent className={`w-full max-w-lg sm:max-w-xl md:max-w-2xl max-h-[90vh] overflow-y-auto rounded-lg shadow-2xl p-0 border ${isDark ? 'bg-[#0d1526] border-slate-800' : 'bg-white border-gray-200'}`}>
@@ -793,7 +856,8 @@ export function ShopPage() {
                       category={part.category}
                       stockQuantity={part.stock_quantity}
                       actionLabel="Add to Cart"
-                      onAction={() => handleAddToCart(part)}
+                      actionHref={loggedIn ? undefined : '/login'}
+                      onAction={loggedIn ? () => handleAddToCart(part) : undefined}
                       showStockStatus
                     />
                   </motion.div>
@@ -807,44 +871,48 @@ export function ShopPage() {
 
       <Footer />
 
-      {/* ── Floating Cart Button ── */}
-      <AnimatePresence>
-        {!cartOpen && (
-          <motion.button
-            key="cart-fab"
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0, opacity: 0 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-            onClick={() => setCartOpen(true)}
-            className="fixed bottom-6 right-6 z-30 w-14 h-14 bg-cyan-500 hover:bg-cyan-400 text-slate-950 rounded-full shadow-lg flex items-center justify-center transition-colors"
-            aria-label="Open cart"
-          >
-            <ShoppingCart className="w-6 h-6" />
-            {totalCartQty > 0 && (
-              <motion.span
-                key={totalCartQty}
-                initial={{ scale: 0.5 }}
-                animate={{ scale: 1 }}
-                className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center shadow"
-              >
-                {totalCartQty > 99 ? '99+' : totalCartQty}
-              </motion.span>
-            )}
-          </motion.button>
-        )}
-      </AnimatePresence>
+      {/* ── Floating Cart Button (logged in only) ── */}
+      {isLoggedIn() && (
+        <AnimatePresence>
+          {!cartOpen && (
+            <motion.button
+              key="cart-fab"
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+              onClick={() => setCartOpen(true)}
+              className="fixed bottom-6 right-6 z-30 w-14 h-14 bg-cyan-500 hover:bg-cyan-400 text-slate-950 rounded-full shadow-lg flex items-center justify-center transition-colors"
+              aria-label="Open cart"
+            >
+              <ShoppingCart className="w-6 h-6" />
+              {totalCartQty > 0 && (
+                <motion.span
+                  key={totalCartQty}
+                  initial={{ scale: 0.5 }}
+                  animate={{ scale: 1 }}
+                  className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center shadow"
+                >
+                  {totalCartQty > 99 ? '99+' : totalCartQty}
+                </motion.span>
+              )}
+            </motion.button>
+          )}
+        </AnimatePresence>
+      )}
 
-      {/* ── Cart Drawer ── */}
-      <CartDrawer
-        isOpen={cartOpen}
-        onClose={() => setCartOpen(false)}
-        items={cartItems}
-        onIncrement={handleIncrement}
-        onDecrement={handleDecrement}
-        onRemove={handleRemove}
-        onProceedToPay={handleProceedToPay}
-      />
+      {/* ── Cart Drawer (logged in only) ── */}
+      {isLoggedIn() && (
+        <CartDrawer
+          isOpen={cartOpen}
+          onClose={() => setCartOpen(false)}
+          items={cartItems}
+          onIncrement={handleIncrement}
+          onDecrement={handleDecrement}
+          onRemove={handleRemove}
+          onProceedToPay={handleProceedToPay}
+        />
+      )}
     </div>
   );
 }

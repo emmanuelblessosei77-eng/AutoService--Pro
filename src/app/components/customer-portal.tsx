@@ -27,6 +27,7 @@ import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Checkbox } from './ui/checkbox';
 import { resolvePartImage } from '../utils/partImageResolver';
+import { PartCard } from './sections/PartCard';
 
 
 interface CustomerPortalProps {
@@ -3826,79 +3827,18 @@ function PartsInventory() {
           {filteredParts.map((part: any) => {
             const partImage = resolvePartImage(part.name, part.image || part.image_url);
             return (
-              <Card key={part.id} className="hover:shadow-lg transition-shadow overflow-hidden flex flex-col">
-                <CardContent className="pt-4 flex-1 flex flex-col">
-                  {/* Part Image */}
-                  <div className="w-full h-40 bg-gray-100 rounded border flex items-center justify-center mb-3 overflow-hidden relative">
-                    {partImage ? (
-                      <img src={partImage} alt={part.name} className="w-full h-full object-cover" />
-                    ) : (
-                      <Package className="h-12 w-12 text-gray-300" />
-                    )}
-                  </div>
-
-                {/* Part Info */}
-                  <h3 className="font-bold text-sm line-clamp-2 mb-2 text-gray-900 dark:text-white">{part.name}</h3>
-                  <p className="text-xs text-gray-600 dark:text-gray-400 mb-2 line-clamp-2">{part.description}</p>
-
-                {/* Category */}
-                  <div className="flex justify-between items-center mb-3">
-                    <Badge variant="outline" className="text-xs">{part.category}</Badge>
-                  </div>
-
-                {/* Price */}
-                  <div className="flex items-baseline gap-2 mb-3">
-                    <span className="text-lg font-bold text-green-600">GH₵{parseFloat(part.price || 0).toFixed(2)}</span>
-                  </div>
-
-                {/* Cart Controls */}
-                  {(part.stock_quantity || 0) > 0 ? (
-                    cartItems[part.id] ? (
-                      <div className="space-y-2 mt-auto">
-                        <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-900/20 p-2 rounded border border-blue-100 dark:border-blue-800">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => updateCartItemQty(part.id, cartItems[part.id] - 1)}
-                            className="h-7 w-7 p-0 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-800/40"
-                          >
-                            −
-                          </Button>
-                          <span className="flex-1 text-center font-medium text-sm text-gray-900 dark:text-white">{cartItems[part.id]}</span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => updateCartItemQty(part.id, cartItems[part.id] + 1)}
-                            className="h-7 w-7 p-0 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-800/40"
-                          >
-                            +
-                          </Button>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => removeFromCart(part.id)}
-                          className="w-full text-xs"
-                        >
-                          Remove
-                        </Button>
-                      </div>
-                    ) : (
-                      <Button
-                        className="w-full gap-2 mt-auto text-xs bg-cyan-500 hover:bg-cyan-400 text-slate-950"
-                        onClick={() => quickAddToCart(part)}
-                        size="sm"
-                      >
-                        <ShoppingCart className="h-3 w-3" /> Add to Cart
-                      </Button>
-                    )
-                  ) : (
-                    <Button disabled size="sm" className="w-full text-xs" variant="outline">
-                      Out of Stock
-                    </Button>
-                  )}
-                </CardContent>
-              </Card>
+              <PartCard
+                key={part.id}
+                name={part.name}
+                price={part.price}
+                imageUrl={partImage}
+                description={part.description}
+                category={part.category}
+                stockQuantity={part.stock_quantity}
+                actionLabel="Add to Cart"
+                onAction={(part.stock_quantity || 0) > 0 ? () => quickAddToCart(part) : undefined}
+                showStockStatus
+              />
             );
           })}
         </div>

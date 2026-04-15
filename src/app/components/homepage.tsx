@@ -325,7 +325,7 @@ function AboutUsCard() {
               Accra's Trusted Auto Workshop
             </h2>
             <p className={`text-base leading-relaxed ${isDark ? 'text-slate-300' : 'text-gray-600'}`}>
-              Founded in 2016 in Osu, Accra, AutoService Pro has grown from a single bay into a full-scale workshop. We combine certified expertise with honest, transparent service — so you always know exactly what's happening with your vehicle.
+              Founded in 2016 in Osu, Accra, AutoService Pro has grown from a single bay into a full-scale workshop. We combine certified expertise with honest, transparent service.So you always know exactly what's happening with your vehicle.
             </p>
 
             <ul className="grid grid-cols-2 gap-3">
