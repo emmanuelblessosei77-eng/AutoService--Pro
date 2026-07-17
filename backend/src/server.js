@@ -5,6 +5,7 @@ require('dotenv').config();
 
 const { startEmailQueue } = require('./lib/emailQueue');
 const db = require('./db');
+const paymentsController = require('./controllers/paymentsController');
 
 async function runMigrations() {
   try {
@@ -17,12 +18,13 @@ async function runMigrations() {
       console.log('✅ Migration: added license_plate column to vehicles');
     }
 
-    // Create part_requests table if missing
+    // Create part_requests table if missing and add the requested_by column for older databases
     await db.query(`
       CREATE TABLE IF NOT EXISTS part_requests (
         id SERIAL PRIMARY KEY,
         booking_id INTEGER REFERENCES bookings(id) ON DELETE CASCADE,
         mechanic_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        requested_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
         part_name VARCHAR(255) NOT NULL,
         quantity INTEGER NOT NULL DEFAULT 1,
         reason TEXT,
@@ -32,6 +34,14 @@ async function runMigrations() {
         updated_at TIMESTAMP DEFAULT NOW()
       )
     `);
+
+    const requestedByCheck = await db.query(
+      `SELECT column_name FROM information_schema.columns WHERE table_name='part_requests' AND column_name='requested_by'`
+    );
+    if (requestedByCheck.rows.length === 0) {
+      await db.query('ALTER TABLE part_requests ADD COLUMN requested_by INTEGER REFERENCES users(id) ON DELETE SET NULL');
+      console.log('✅ Migration: added requested_by column to part_requests');
+    }
 
     // Create notifications table if missing
     await db.query(`
@@ -113,6 +123,19 @@ app.use((req, res, next) => {
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
+app.get('/paystack-simulate', async (req, res) => {
+  try {
+    const reference = req.query.reference || `LOCAL_${Date.now()}_${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+    await paymentsController.completePaymentByReference(reference);
+    const frontendBase = process.env.FRONTEND_URL || process.env.APP_URL || 'http://localhost:5173';
+    return res.redirect(`${frontendBase}/payment-success?reference=${encodeURIComponent(reference)}&status=success`);
+  } catch (err) {
+    console.error('⚠️ Simulated Paystack redirect failed:', err.message);
+    const frontendBase = process.env.FRONTEND_URL || process.env.APP_URL || 'http://localhost:5173';
+    return res.redirect(`${frontendBase}/payment-success?status=error`);
+  }
+});
+
 app.use('/api/users', usersRouter);
 app.use('/api/services', servicesRouter);
 app.use('/api/bookings', bookingsRouter);
@@ -139,15 +162,46 @@ app.use((err, req, res, next) => {
   next(err);
 });
 
-const PORT = process.env.PORT || 4000;
-app.listen(PORT, async () => {
-  console.log(`Server running on port ${PORT}`);
+const startServer = (port) => {
+  app.listen(port, async () => {
+    console.log(`Server running on port ${port}`);
 
-  // Run DB migrations before anything else
-  await runMigrations();
+    // Run DB migrations before anything else
+    await runMigrations();
 
-  // Start the background email queue after server is ready
-  startEmailQueue().catch((err) => {
-    console.error('❌ Failed to start email queue:', err.message);
+    // Start the background email queue after server is ready
+    startEmailQueue().catch((err) => {
+      console.error('❌ Failed to start email queue:', err.message);
+    });
   });
-});
+};
+
+const requestedPort = parseInt(process.env.PORT || '4000', 10);
+const portsToTry = [requestedPort, requestedPort + 1, requestedPort + 2, requestedPort + 3];
+
+const tryStartServer = (index = 0) => {
+  const port = portsToTry[index];
+  const server = app.listen(port, async () => {
+    console.log(`Server running on port ${port}`);
+
+    // Run DB migrations before anything else
+    await runMigrations();
+
+    // Start the background email queue after server is ready
+    startEmailQueue().catch((err) => {
+      console.error('❌ Failed to start email queue:', err.message);
+    });
+  });
+
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE' && index < portsToTry.length - 1) {
+      console.warn(`Port ${port} is busy, trying ${portsToTry[index + 1]}`);
+      server.close(() => tryStartServer(index + 1));
+    } else {
+      console.error('Failed to start server:', err);
+      process.exit(1);
+    }
+  });
+};
+
+tryStartServer();

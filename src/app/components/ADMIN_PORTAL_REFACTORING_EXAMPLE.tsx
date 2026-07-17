@@ -862,6 +862,16 @@ function OverviewTab({ bookings, users, services, orders, parts }: { bookings: R
         return { label: d.toLocaleDateString('en-US', { month: 'short' }), value: users.filter(u => u.created_at?.slice(0, 7) === key).length };
       });
 
+      const trendData = Array.from({ length: 14 }, (_, i) => {
+        const d = new Date(now);
+        d.setDate(now.getDate() - (13 - i));
+        const key = d.toISOString().slice(0, 10);
+        return {
+          label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          value: bookings.filter(b => (b.booking_datetime || b.created_at || '').slice(0, 10) === key).length,
+        };
+      });
+
       const activeVsInactive = [
         { label: 'Active (30d)', value: activeUsers },
         { label: 'Inactive', value: Math.max(0, users.length - activeUsers) },

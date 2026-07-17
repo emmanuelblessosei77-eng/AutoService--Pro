@@ -115,6 +115,9 @@ const updateProfile = async (req, res) => {
 
 const getProfile = async (req, res) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
     const userId = req.user.id;
     const { rows } = await db.query(
       'SELECT id, first_name, last_name, email, phone, role, address, city, postcode, specialty, hire_date, access_level, membership_date, created_at, updated_at FROM users WHERE id = $1',

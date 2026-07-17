@@ -1,4 +1,20 @@
-const API_BASE_URL = (import.meta as any).env.VITE_API_BASE_URL || 'http://localhost:4000/api';
+const defaultApiBase = '/api';
+const normalizeApiBase = (value?: string) => {
+  if (!value) return defaultApiBase;
+
+  const trimmed = value.trim();
+  if (!trimmed) return defaultApiBase;
+
+  // If the environment points to localhost, prefer same-origin /api so the browser
+  // can use the Vite proxy or the deployed backend path correctly.
+  if (/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?(\/|$)/i.test(trimmed)) {
+    return defaultApiBase;
+  }
+
+  return trimmed;
+};
+
+const API_BASE_URL = normalizeApiBase((import.meta as any).env.VITE_API_BASE_URL) || defaultApiBase;
 export const API_BASE = API_BASE_URL;
 
 // Expose debug utilities to window for console access
@@ -18,12 +34,23 @@ interface RequestOptions {
 }
 
 const DEV_TOKEN_PREFIX = 'dev-token';
+const clearStoredAuth = () => {
+  try {
+    ['authToken', 'token', 'currentUser', 'user'].forEach((key) => localStorage.removeItem(key));
+  } catch (e) {
+    // ignore storage access issues in restricted environments
+  }
+};
+
 const getAuthToken = () => {
-  const t = localStorage.getItem('authToken');
-  // For mock server development, allow dev tokens
-  // For production, we'd validate real tokens
-  if (!t) return null;
-  return t;
+  // Check primary key
+  let t = localStorage.getItem('authToken');
+  // Fallbacks: some older codepaths used 'token'
+  if (!t) t = localStorage.getItem('token');
+  // Final fallback: environment or dev token
+  if (!t && typeof window !== 'undefined' && (window as any).TEST_TOKEN) t = (window as any).TEST_TOKEN;
+  // Return null if still missing
+  return t || null;
 };
 
 // Simple response cache (GET requests only)
@@ -105,45 +132,55 @@ const makeRequest = async (endpoint: string, options: RequestOptions = {}) => {
   }
 
   try {
-    const fullUrl = `${API_BASE_URL}${endpoint}`;
-    console.log(`📡 API Request: ${method} ${fullUrl}`, { hasToken: !!token });
+    const Url = `${API_BASE_URL}${endpoint}`;
+    console.log(` API Request: ${method} ${Url}`, { hasToken: !!token });
     
-    const response = await fetch(fullUrl, {
+    const response = await fetch(Url, {
       method,
       headers,
       body: options.body ? JSON.stringify(options.body) : undefined,
     });
 
-    console.log(`📨 API Response: ${response.status} ${response.statusText} for ${method} ${endpoint}`);
+    console.log(` API Response: ${response.status} ${response.statusText} for ${method} ${endpoint}`);
+
+    const parseResponseBody = async () => {
+      const contentType = response.headers.get('content-type') || '';
+      const rawText = await response.text();
+      if (!rawText) return null;
+      if (contentType.includes('application/json')) {
+        try {
+          return JSON.parse(rawText);
+        } catch {
+          return rawText;
+        }
+      }
+      return rawText;
+    };
 
     if (!response.ok) {
-      let errorBody = '';
+      let errorBody: unknown = 'Could not read error body';
       try {
-        errorBody = await response.text();
+        errorBody = await parseResponseBody();
       } catch (e) {
         errorBody = 'Could not read error body';
       }
 
-      // If the backend responded with 401, clear stored auth and surface a clearer error
-      if (response.status === 401) {
-        console.warn('🔒 API returned 401 Unauthorized — clearing stored auth token');
-        try {
-          localStorage.removeItem('authToken');
-          localStorage.removeItem('currentUser');
-        } catch (e) {
-          // ignore
-        }
+      // If the backend responded with 401/403, clear stored auth and surface a clearer error
+      if (response.status === 401 || response.status === 403) {
+        console.warn(`🔒 API returned ${response.status} — clearing stored auth data`);
+        clearStoredAuth();
       }
 
-      console.error(`🔴 API Error ${response.status} for ${method} ${endpoint}:`, errorBody);
-      throw new Error(`API Error: ${response.status} ${response.statusText} - ${errorBody}`);
+      const errorText = typeof errorBody === 'string' ? errorBody : JSON.stringify(errorBody);
+      console.error(`🔴 API Error ${response.status} for ${method} ${endpoint}:`, errorText);
+      throw new Error(`API Error: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
-    const data = await response.json();
+    const data = await parseResponseBody();
     console.log(`✅ API Success (${method} ${endpoint}):`, data);
     
     // Cache GET responses
-    if (isGET) {
+    if (isGET && data !== null) {
       setCachedResponse(endpoint, data, method);
     }
     
@@ -382,12 +419,12 @@ export const carParts = {
 export const orders = {
   getAll: async () => {
     try {
-      return await makeRequest('/orders/all', { skipCache: true });
+      return await makeRequest('/orders/admin/all', { skipCache: true });
     } catch (err: any) {
       const message = err?.message || '';
       // Backward compatibility for older backend route shape.
       if (message.includes('404')) {
-        return makeRequest('/orders/admin/all', { skipCache: true });
+        return makeRequest('/orders/all', { skipCache: true });
       }
       throw err;
     }

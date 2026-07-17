@@ -3218,9 +3218,14 @@ function PartsInventory() {
         }
         
         console.log(`  ✓ Found part ${partIdNum}: ${part.name}`);
+        const unitPrice = typeof part.price === 'string' ? parseFloat(part.price) : (part.price || 0);
         return {
           car_part_id: partIdNum,
-          quantity: parseInt(quantity.toString())
+          quantity: parseInt(quantity.toString()),
+          unit_price: parseFloat(unitPrice.toFixed(2)),
+          part_name: part.name,
+          category: part.category || 'Imported',
+          stock_quantity: part.stock_quantity || 0
         };
       });
       

@@ -4,7 +4,7 @@ const paymentsController = require('../controllers/paymentsController');
 const { authenticate } = require('../middleware/auth');
 
 // Initialize payment (start transaction with Paystack)
-router.post('/initialize', authenticate, paymentsController.initializePayment);
+router.post('/initialize', paymentsController.initializePayment);
 
 // Verify payment (confirm transaction)
 router.post('/verify', paymentsController.verifyPayment);

@@ -18,6 +18,7 @@ import {
   Shield,
   Truck,
   ArrowRight,
+  AlertCircle,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Header } from './header';
@@ -529,6 +530,8 @@ export function ShopPage() {
         },
       ];
     });
+    // Auto-open cart drawer to show confirmation
+    setCartOpen(true);
   };
 
   const handleIncrement = (id: number) => {
@@ -797,7 +800,7 @@ export function ShopPage() {
           {!loading && error && (
             <div className="flex flex-col items-center justify-center py-20 text-center gap-4">
               <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center">
-                <AlertCircle className="w-8 h-8 text-red-400" />
+                <AlertCircle className="w-8 h-8 text-red-400"></AlertCircle> 
               </div>
               <p className={`font-semibold ${isDark ? 'text-slate-300' : 'text-gray-700'}`}>
                 Failed to load parts

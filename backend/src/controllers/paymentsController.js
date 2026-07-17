@@ -7,13 +7,28 @@ const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY;
 const PAYSTACK_PUBLIC = process.env.PAYSTACK_PUBLIC_KEY;
 const PAYSTACK_BASE_URL = 'https://api.paystack.co';
 
-console.log('🔑 Paystack Keys Loaded:');
-console.log('  Public Key:', PAYSTACK_PUBLIC ? '✓ Loaded' : '❌ MISSING');
-console.log('  Secret Key:', PAYSTACK_SECRET ? '✓ Loaded' : '❌ MISSING');
+console.log(' Paystack Keys Loaded:');
+console.log('  Public Key:', PAYSTACK_PUBLIC ? '✓ Loaded' : ' MISSING');
+console.log('  Secret Key:', PAYSTACK_SECRET ? '✓ Loaded' : ' MISSING');
 
 // Validate amount
 const validateAmount = (amount) => {
   return amount > 0 && !isNaN(amount);
+};
+
+const isLocalSimulationEnabled = () => {
+  const secret = (PAYSTACK_SECRET || '').trim();
+  const publicKey = (PAYSTACK_PUBLIC || '').trim();
+
+  return !secret || !publicKey ||
+    secret.includes('your_') ||
+    secret.includes('replace_me') ||
+    publicKey.includes('your_') ||
+    publicKey.includes('replace_me');
+};
+
+const createLocalPaymentReference = () => {
+  return `LOCAL_${Date.now()}_${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 };
 
 // Verify Paystack webhook signature
@@ -25,6 +40,68 @@ const verifyWebhookSignature = (req) => {
     .update(body)
     .digest('hex');
   return hash === signature;
+};
+
+const completePaymentByReference = async (reference, metadata = {}) => {
+  if (!reference) throw new Error('Reference is required');
+
+  const { rows: payments } = await db.query(
+    'SELECT id, booking_id, order_id, amount, status FROM payments WHERE reference = $1 LIMIT 1',
+    [reference]
+  );
+  const payment = payments[0];
+
+  if (!payment) {
+    const fallback = metadata.booking_id || metadata.order_id;
+    if (fallback) {
+      const { rows: byTransaction } = await db.query(
+        metadata.booking_id
+          ? 'SELECT id, booking_id, order_id, amount, status FROM payments WHERE booking_id = $1 LIMIT 1'
+          : 'SELECT id, booking_id, order_id, amount, status FROM payments WHERE order_id = $1 LIMIT 1',
+        [fallback]
+      );
+      const fallbackPayment = byTransaction[0];
+      if (fallbackPayment) {
+        await db.query('UPDATE payments SET reference = $1, status = $2, updated_at = NOW() WHERE id = $3',
+           [reference, 'completed', fallbackPayment.id]);
+        return { payment: { ...fallbackPayment, reference, status: 'completed' } };
+      }
+    }
+
+    throw new Error(`Payment with reference ${reference} not found`);
+  }
+
+  if (payment.status === 'completed') {
+    return { payment: { ...payment, reference, status: 'completed' } };
+  }
+
+  await db.query('UPDATE payments SET status = $1, reference = $2, updated_at = NOW() WHERE id = $3',
+     ['completed', reference, payment.id]);
+
+  const transactionType = payment.booking_id ? 'booking' : (payment.order_id ? 'order' : null);
+  const transactionId = payment.booking_id || payment.order_id;
+
+  if (transactionType === 'booking') {
+    await db.query(
+      `UPDATE bookings SET payment_status = $1, status = CASE WHEN status = 
+      'pending' THEN 'scheduled' ELSE status END, updated_at = NOW() WHERE id = $2`,
+      ['completed', transactionId]
+    );
+  } else if (transactionType === 'order') {
+    await db.query(
+      `UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2`,
+      ['completed', transactionId]
+    );
+  }
+
+  try {
+    await notifyPaymentReceived(payment.id, transactionType);
+    console.log(' Payment received notification sent via local simulation');
+  } catch (notifErr) {
+    console.error(' Failed to send payment notification for local simulation:', notifErr.message);
+  }
+
+  return { payment: { ...payment, reference, status: 'completed' } };
 };
 
 // Initialize Payment - Generate Paystack authorization URL
@@ -72,7 +149,7 @@ const initializePayment = async (req, res) => {
     if (!finalAmount) {
       if (transactionData) {
         finalAmount = transactionType === 'booking' ? transactionData.total_cost : transactionData.total_amount;
-        console.log(`💡 Amount not provided, using ${transactionType} ${transactionType === 'booking' ? 'total_cost' : 'total_amount'}: ${finalAmount}`);
+        console.log(` Amount not provided, using ${transactionType} ${transactionType === 'booking' ? 'total_cost' : 'total_amount'}: ${finalAmount}`);
       }
     }
 
@@ -98,10 +175,10 @@ const initializePayment = async (req, res) => {
             breakdown: `Service price + Approved parts = GH₵${expectedAmount}. You attempted to pay GH₵${receivedAmount}.`
           });
         }
-        console.log(`✅ Booking #${transactionId} validation passed - Amount GH₵${receivedAmount} matches total_cost`);
+        console.log(` Booking #${transactionId} validation passed - Amount GH₵${receivedAmount} matches total_cost`);
       } else {
         // total_cost not set yet (booking created before price resolved) — accept provided amount
-        console.log(`ℹ️  Booking #${transactionId} has no total_cost — using provided amount GH₵${receivedAmount}`);
+        console.log(`  Booking #${transactionId} has no total_cost — using provided amount GH₵${receivedAmount}`);
       }
     }
 
@@ -144,11 +221,30 @@ const initializePayment = async (req, res) => {
 
     const payment = rows[0];
 
+    if (isLocalSimulationEnabled()) {
+      const reference = createLocalPaymentReference();
+      const backendBase = process.env.BACKEND_URL || process.env.API_URL || `${req.protocol}://${req.get('host')}`;
+      const authorizationUrl = `${backendBase}/paystack-simulate?reference=${encodeURIComponent(reference)}`;
+
+      await db.query('UPDATE payments SET reference = $1, updated_at = NOW() WHERE id = $2', [reference, payment.id]);
+
+      return res.json({
+        success: true,
+        publicKey: PAYSTACK_PUBLIC || 'pk_test_local',
+        authorization_url: authorizationUrl,
+        access_code: `local_${reference}`,
+        reference,
+        payment_id: payment.id,
+        simulated: true,
+        message: 'Using local payment simulation because Paystack credentials are not configured.'
+      });
+    }
+
     // Build Paystack payload
-    console.log(`💰 Payment amount received: ${finalAmount} GH₵`);
-    console.log(`📋 Payment Type: ${transactionType === 'booking' ? `Booking #${transactionId} (Service + Parts)` : `Order #${transactionId}`}`);
+    console.log(` Payment amount received: ${finalAmount} GH₵`);
+    console.log(` Payment Type: ${transactionType === 'booking' ? `Booking #${transactionId} (Service + Parts)` : `Order #${transactionId}`}`);
     const amountInPesewas = Math.round(finalAmount * 100);
-    console.log(`💰 Converting to pesewas: ${amountInPesewas} pesewas (${(amountInPesewas / 100).toFixed(2)} GH₵)`);
+    console.log(` Converting to pesewas: ${amountInPesewas} pesewas (${(amountInPesewas / 100).toFixed(2)} GH₵)`);
     
     const paystackPayload = {
       email,
@@ -271,6 +367,20 @@ const verifyPayment = async (req, res) => {
 
     if (!reference) {
       return res.status(400).json({ error: 'Reference is required' });
+    }
+
+    if (typeof reference === 'string' && reference.startsWith('LOCAL_')) {
+      const result = await completePaymentByReference(reference);
+      const payment = result.payment;
+      return res.json({
+        success: true,
+        message: 'Payment verified successfully (local simulation)',
+        amount: payment ? parseFloat(payment.amount) : 0,
+        booking_id: payment?.booking_id || null,
+        order_id: payment?.order_id || null,
+        reference,
+        transaction_type: payment?.booking_id ? 'booking' : (payment?.order_id ? 'order' : null)
+      });
     }
 
     // Local shortcut: if a payment with this reference already exists and is completed,
@@ -412,8 +522,8 @@ const verifyPayment = async (req, res) => {
 
       await db.query(updateQuery, updateParams);
 
-      // 🔔 Trigger payment received notification
-      console.log('📌 Payment verified - triggering payment received notification');
+      // Trigger payment received notification
+      console.log(' Payment verified - triggering payment received notification');
       try {
         // Fetch the payment record to get payment ID
         let paymentQuery, paymentParams;
@@ -428,10 +538,10 @@ const verifyPayment = async (req, res) => {
         const paymentRecord = await db.query(paymentQuery, paymentParams);
         if (paymentRecord.rows[0]) {
           await notifyPaymentReceived(paymentRecord.rows[0].id, transactionType);
-          console.log('✅ Payment received notification sent');
+          console.log(' Payment received notification sent');
         }
       } catch (notifErr) {
-        console.error('⚠️ Failed to send payment notification:', notifErr.message);
+        console.error(' Failed to send payment notification:', notifErr.message);
       }
 
       res.json({
@@ -477,7 +587,6 @@ const getPaymentStatus = async (req, res) => {
     if (!rows[0]) {
       return res.status(404).json({ error: 'No payment found for this booking' });
     }
-
     res.json(rows[0]);
   } catch (err) {
     console.error(err);
@@ -712,7 +821,7 @@ const getPaymentHistory = async (req, res) => {
               r.id as refund_id, r.reference as refund_reference, r.status as refund_status
        FROM payments p
        LEFT JOIN refunds r ON p.id = r.payment_id
-       WHERE p.booking_id = $1
+       WHERE p.booking_id = $1                  
        ORDER BY p.created_at DESC`,
       [booking_id]
     );
@@ -1094,5 +1203,6 @@ module.exports = {
   handlePaystackWebhook,
   getPaymentHistory,
   generateInvoice,
-  generateOrderInvoice
+  generateOrderInvoice,
+  completePaymentByReference
 };

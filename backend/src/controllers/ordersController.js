@@ -12,28 +12,60 @@ async function createOrder(req, res) {
   const client = await db.pool.connect();
   try {
     const user_id = req.user.id;
-    const { items } = req.body; // items: [{ car_part_id, quantity }]
+    const { items } = req.body; // items: [{ car_part_id, quantity, unit_price, part_name }]
     if (!items || !items.length) return res.status(400).json({ error: 'No items provided' });
 
+    // Verify user exists
+    const userRes = await client.query('SELECT id FROM users WHERE id = $1', [user_id]);
+    if (!userRes.rows[0]) {
+      return res.status(401).json({ error: 'User not found. Please login again.' });
+    }
+
+    const normalizedItems = items.map((item) => ({
+      car_part_id: item.car_part_id ?? item.part_id ?? item.id,
+      quantity: Number(item.quantity || 1),
+      unit_price: Number(item.unit_price ?? item.price ?? 0),
+      part_name: item.part_name || item.name || null,
+      category: item.category || 'Imported',
+      stock_quantity: Number(item.stock_quantity ?? 100),
+    }));
+
     await client.query('BEGIN');
-    // calculate total and insert order
+
+    const resolvedItems = [];
     let total = 0;
-    for (const it of items) {
-      const partRes = await client.query('SELECT price, stock_quantity FROM car_parts WHERE id = $1 FOR UPDATE', [it.car_part_id]);
-      const part = partRes.rows[0];
-      if (!part) throw new Error(`Part ${it.car_part_id} not found`);
-      if (part.stock_quantity < it.quantity) throw new Error(`Insufficient stock for part ${it.car_part_id}`);
-      total += Number(part.price) * Number(it.quantity);
+    for (const it of normalizedItems) {
+      const partId = it.car_part_id;
+      if (!partId) throw new Error('Missing part reference');
+
+      const partRes = await client.query('SELECT id, name, price, stock_quantity FROM car_parts WHERE id = $1 FOR UPDATE', [partId]);
+      let part = partRes.rows[0];
+
+      if (!part) {
+        const createdRes = await client.query(
+          `INSERT INTO car_parts (name, description, category, price, stock_quantity, is_available)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           RETURNING id, name, price, stock_quantity`,
+          [it.part_name || `Imported Part ${partId}`, 'Created during checkout', it.category, it.unit_price || 0, it.stock_quantity || 100, true]
+        );
+        part = createdRes.rows[0];
+        console.warn(`⚠️ Created missing car_part ${part.id} for checkout item ${partId}`);
+      }
+
+      const requestedQty = Number(it.quantity || 1);
+      const unitPrice = Number(it.unit_price || part.price || 0);
+      if (part.stock_quantity < requestedQty) throw new Error(`Insufficient stock for part ${partId}`);
+
+      total += unitPrice * requestedQty;
+      resolvedItems.push({ partId: part.id, quantity: requestedQty, unitPrice, partName: part.name });
     }
 
     const orderRes = await client.query('INSERT INTO orders (user_id, total_amount, status, created_at) VALUES ($1,$2,$3,NOW()) RETURNING *', [user_id, total, 'pending']);
     const order = orderRes.rows[0];
 
-    for (const it of items) {
-      const partRes = await client.query('SELECT price FROM car_parts WHERE id = $1 FOR UPDATE', [it.car_part_id]);
-      const price = partRes.rows[0].price;
-      await client.query('INSERT INTO order_items (order_id, car_part_id, quantity, unit_price) VALUES ($1,$2,$3,$4)', [order.id, it.car_part_id, it.quantity, price]);
-      await client.query('UPDATE car_parts SET stock_quantity = stock_quantity - $1, updated_at = NOW() WHERE id = $2', [it.quantity, it.car_part_id]);
+    for (const it of resolvedItems) {
+      await client.query('INSERT INTO order_items (order_id, car_part_id, quantity, unit_price) VALUES ($1,$2,$3,$4)', [order.id, it.partId, it.quantity, it.unitPrice]);
+      await client.query('UPDATE car_parts SET stock_quantity = stock_quantity - $1, updated_at = NOW() WHERE id = $2', [it.quantity, it.partId]);
     }
 
     await client.query('COMMIT');
@@ -62,6 +94,10 @@ async function getOrderById(req, res) {
   try {
     const user_id = req.user.id;
     const { id } = req.params;
+    // Validate ID is numeric
+    if (isNaN(id) || id === 'all') {
+      return res.status(400).json({ error: 'Invalid order ID' });
+    }
     const { rows } = await db.query('SELECT * FROM orders WHERE id = $1 AND user_id = $2', [id, user_id]);
     if (!rows[0]) return res.status(404).json({ error: 'Order not found' });
     const order = rows[0];

@@ -95,6 +95,7 @@ CREATE TABLE IF NOT EXISTS part_requests (
   id SERIAL PRIMARY KEY,
   booking_id INTEGER REFERENCES bookings(id) ON DELETE CASCADE,
   mechanic_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  requested_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
   part_name VARCHAR(255) NOT NULL,
   quantity INTEGER NOT NULL DEFAULT 1,
   reason TEXT,
@@ -102,4 +103,16 @@ CREATE TABLE IF NOT EXISTS part_requests (
   status VARCHAR(20) NOT NULL DEFAULT 'requested' CHECK (status IN ('requested', 'approved', 'fulfilled', 'rejected')),
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS payments (
+  id SERIAL PRIMARY KEY,
+  booking_id INTEGER REFERENCES bookings(id) ON DELETE CASCADE,
+  order_id INTEGER REFERENCES orders(id) ON DELETE CASCADE,
+  amount NUMERIC(10,2) NOT NULL,
+  email TEXT NOT NULL,
+  reference VARCHAR(255),
+  status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'failed', 'cancelled')),
+  created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
 );
